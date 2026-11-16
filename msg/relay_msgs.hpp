@@ -142,7 +142,7 @@ struct alignas(8) Health
   uint16_t reserved1;       // 对齐填充，恒为 0；保留给后续追加字段
 };
 
-// 视觉下发的云台瞄准指令：打包成 0x0402 写入串口
+// 视觉下发的云台瞄准指令：打包成 0x0400 写入串口
 struct alignas(8) AimCmd
 {
   uint64_t t_ns;         // 视觉侧发出时刻，ns；relay 用它计算端到端延迟
@@ -153,7 +153,7 @@ struct alignas(8) AimCmd
   uint8_t reserved0[2];  // 对齐填充，恒为 0
 };
 
-// 导航速度指令：打包成 0x0405 写入串口
+// 导航速度指令：打包成 0x0401 写入串口
 struct alignas(8) NavCmd
 {
   uint64_t t_ns;          // 产生时刻，ns

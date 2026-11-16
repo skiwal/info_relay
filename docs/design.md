@@ -88,6 +88,15 @@
 | `serial` | 真实串口设备，线路格式由 `IO/serial/protocol` 定义 |
 | `can` | Linux SocketCAN，8 字节分片重组后交给同一协议解析逻辑 |
 
+**下行帧 ID**（固定协议常量，不通过运行配置修改）：
+
+| 帧 | cmd_id | data 段 | 说明 |
+| --- | --- | --- | --- |
+| 自瞄控制 | `0x0400` | 9 字节 | `pitch(f32) / yaw(f32) / shoot(u8)` |
+| 导航速度 | `0x0401` | 16 字节 | `vx(f32) / vy(f32) / wz(f32) / target_angle(f32)` |
+
+打包/解包统一由 `IO/serial/protocol/downlink.cpp` 完成；若线缆回环或下位机回显这两帧，`MinipcLink` 会按相同 ID 解包并记录，不会把它们当作上行帧触发状态更新。
+
 **输出**（解析成功才发布）：
 
 | 输出 | 来源帧 | 失败语义 |

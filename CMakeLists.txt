@@ -70,6 +70,7 @@ add_library(relay_io OBJECT
     IO/serial/protocol/frame.cpp
     IO/serial/protocol/uplink_host.cpp
     IO/serial/protocol/uplink_referee.cpp
+    IO/serial/protocol/downlink.cpp
     IO/serial/protocol/dispatch.cpp
     IO/can/can_io.cpp
     IO/can/protocol/crc.cpp

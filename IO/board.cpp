@@ -15,7 +15,6 @@
 #include <stdexcept>
 #include <utility>
 
-#include "IO/serial/protocol/crc.hpp"
 #include "tools/config.hpp"
 #include "IO/inc/IO.hpp"
 #include "tools/logger.hpp"
@@ -147,55 +146,40 @@ void CommBoard::update_imu_samples()
 
 void CommBoard::send(Command command) const
 {
-  SendPacket packet{};
-  packet.header.header = 0xA5;
-  packet.header.data_length = sizeof(SendPacket) - sizeof(Header) - 2;
-  packet.header.seq = 0;
-  packet.header.cmd_id = 0x0402;
-  crc8::Append_CRC8_Check_Sum(
-    reinterpret_cast<uint8_t *>(&packet.header), sizeof(Header) - 2);
-
-  packet.pitch = static_cast<float>(command.pitch);
-  packet.yaw = static_cast<float>(command.yaw);
-  packet.shoot = (command.control && command.shoot) ? 1 : 0;
-
-  crc16::Append_CRC16_Check_Sum(reinterpret_cast<uint8_t *>(&packet), sizeof(SendPacket));
+  uint8_t frame[sizeof(SendPacket)]{};
+  const size_t size = encode_aim(
+    frame, sizeof(frame), static_cast<float>(command.pitch), static_cast<float>(command.yaw),
+    (command.control && command.shoot) ? 1 : 0);
+  if (size == 0) {
+    logger()->warn("[CommBoard] 自瞄控制帧 0x{:04X} 打包失败", kCmdAimDownlink);
+    return;
+  }
 
   try {
     std::lock_guard<std::mutex> lock(send_mutex_);
-    io_->write(reinterpret_cast<const uint8_t *>(&packet), sizeof(SendPacket));
+    io_->write(frame, size);
   } catch (const std::exception & e) {
-    logger()->warn("[CommBoard] 写下行 0x0402 失败：{}", e.what());
+    logger()->warn("[CommBoard] 写下行 0x{:04X} 失败：{}", kCmdAimDownlink, e.what());
   }
 }
 
 void CommBoard::send(NavCommand command) const
 {
-  NavigationPacket packet{};
-  packet.header.header = 0xA5;
-  packet.header.data_length = sizeof(NavigationPacket) - sizeof(Header) - 2;
-  packet.header.seq = 0;
-  packet.header.cmd_id = 0x0405;
-  // 导航 0x0405 与自瞄 0x0402 共用同一套 RM 标准 CRC（init 0xFF / 0xFFFF）
-  crc8::Append_CRC8_Check_Sum(
-    reinterpret_cast<uint8_t *>(&packet.header), sizeof(Header) - 2);
-
-  packet.vx = static_cast<float>(command.vx);
-  packet.vy = static_cast<float>(command.vy);
-  packet.vy = -packet.vy;
-  packet.wz = static_cast<float>(command.wz);
-  // 目标航向角：iceoryx2 的 NavCmd 线格式没有航向字段，当前固定发 0；
-  // 将来线格式扩展后由 info_relay::NavCommand::target_angle 透传。
-  packet.target_angle = static_cast<float>(command.target_angle);
-
-  crc16::Append_CRC16_Check_Sum(
-    reinterpret_cast<uint8_t *>(&packet), sizeof(NavigationPacket));
+  uint8_t frame[sizeof(NavigationPacket)]{};
+  // 导航速度约定：线格式中的 vy 与业务层符号相反，打包前取反。
+  const size_t size = encode_nav(
+    frame, sizeof(frame), static_cast<float>(command.vx), static_cast<float>(-command.vy),
+    static_cast<float>(command.wz), static_cast<float>(command.target_angle));
+  if (size == 0) {
+    logger()->warn("[CommBoard] 导航帧 0x{:04X} 打包失败", kCmdNavDownlink);
+    return;
+  }
 
   try {
     std::lock_guard<std::mutex> lock(send_mutex_);
-    io_->write(reinterpret_cast<const uint8_t *>(&packet), sizeof(NavigationPacket));
+    io_->write(frame, size);
   } catch (const std::exception & e) {
-    logger()->warn("[CommBoard] 写导航指令 0x0405 失败：{}", e.what());
+    logger()->warn("[CommBoard] 写导航指令 0x{:04X} 失败：{}", kCmdNavDownlink, e.what());
   }
 }
 

@@ -15,7 +15,7 @@
  * 中转进程内部使用的业务结构体：下行指令、导航指令、裁判状态、云台姿态。
  *
  * 数据流：解析结果 → ImuState / RefereeState → 打包成 msg 里的 POD 发布；
- *         视觉/导航下发的 AimCmd/NavCmd → Command/NavCommand → 打包成 0x0402/0x0405 写串口。
+ *         视觉/导航下发的 AimCmd/NavCmd → Command/NavCommand → 打包成 0x0400/0x0401 写串口。
  *
  * 依赖与边界：只放纯数据，不含任何算法；本文件不依赖 third_party 与视觉工程。
  *
@@ -28,7 +28,7 @@
 namespace info_relay
 {
 
-// 视觉下发的云台瞄准指令（对应下行 0x0402）
+// 视觉下发的云台瞄准指令（对应下行 0x0400）
 struct Command
 {
   bool control = false;          // 是否接管云台；false 时下位机忽略 yaw/pitch
@@ -38,7 +38,7 @@ struct Command
   double horizon_distance = 0;   // 弹道补偿用的水平距离，m；为 0 时下位机忽略
 };
 
-// 导航速度指令（对应下行 0x0405）
+// 导航速度指令（对应下行 0x0401）
 struct NavCommand
 {
   double vx = 0;            // 体坐标系前进速度，m/s

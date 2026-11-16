@@ -13,7 +13,9 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 
+#include "IO/serial/protocol/downlink.hpp"
 #include "IO/serial/protocol/uplink_host.hpp"
 #include "IO/serial/protocol/frame.hpp"
 #include "IO/serial/protocol/uplink_referee.hpp"
@@ -24,9 +26,9 @@ namespace info_relay
 /**
  * @brief 上位机侧链路解包：按 cmd_id 号段把帧分给对应解码器。
  * @details 下位机把裁判转发帧与自己的 host 帧放在同一条链路上，号段约定：
- *   裁判 0x0001~0x0A06（原样转发）  下行 0x04xx  上行 0x05xx
- * 因此 0x05xx 交给 host_comm，其余交给赛季协议；0x04xx 是上位机自己发的方向，
- * 正常不会收到，落到赛季协议后被静默忽略。
+ *   裁判 0x0001~0x0A06（原样转发）  下行 0x0400/0x0401  上行 0x05xx
+ * 0x05xx 交给 host_comm；0x0400/0x0401 交给下行解码器（正常只在本端发送，
+ * 若线缆回环或下位机回显则记录最近一次解包结果）；其余交给赛季协议。
  * 并发：OnCommand 在接收线程中调用，on_frame 也在同一线程内同步回调。
  */
 class MinipcLink final : public referee_comm::Protocol
@@ -38,6 +40,11 @@ public:
   host_comm::Protocol host;
   /** @brief 下位机转发的裁判系统帧（按赛季解析）。 */
   referee_comm::v2027::Protocol referee;
+
+  /** @brief 最近一次回显/回环收到的下行自瞄帧，未收到时为空。 */
+  std::optional<AimFields> last_aim_downlink;
+  /** @brief 最近一次回显/回环收到的下行导航帧，未收到时为空。 */
+  std::optional<NavFields> last_nav_downlink;
 
   /**
    * @brief 每解出一帧就回调一次，参数为刚处理完的 cmd_id。
