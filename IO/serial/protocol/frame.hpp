@@ -146,15 +146,24 @@ public:
     uint16_t length);
 
 private:
-  /** @brief 从缓存头部丢弃 size 字节。 */
+  /** @brief 待处理字节数。 */
+  size_t available() const { return end_ - begin_; }
+  /** @brief 取相对 begin_ 的第 offset 个字节。 */
+  uint8_t at(size_t offset) const { return buffer_[(begin_ + offset) % MAX_PACKET]; }
+  /** @brief 追加一个字节；缓冲区满时丢弃最旧字节，不搬移已有数据。 */
+  void append(uint8_t byte);
+  /** @brief 取连续视图；跨环形回绕时拷贝到 scratch。 */
+  const uint8_t * view(size_t offset, size_t length, uint8_t * scratch) const;
+  /** @brief 从缓存头部丢弃 size 字节，只推进游标。 */
   void Discard(size_t size);
   /** @brief 丢弃到下一个可能的帧头，用于校验失败后的边界恢复。 */
   void Resync();
 
   Protocol & protocol_;
 
-  uint8_t buffer_[MAX_PACKET] = {}; ///< 接收与解帧共用缓存。
-  size_t used_ = 0;                 ///< 缓存中待处理字节数。
+  uint8_t buffer_[MAX_PACKET] = {}; ///< 环形接收缓存。
+  size_t begin_ = 0;                ///< 单调递增的读游标。
+  size_t end_ = 0;                  ///< 单调递增的写游标。
   Stats stats_{};
   bool has_rx_ = false;
   std::chrono::steady_clock::time_point last_rx_{};

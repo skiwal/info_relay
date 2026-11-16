@@ -137,7 +137,7 @@ Eigen::Quaterniond CommBoard::imu_at(std::chrono::steady_clock::time_point times
 void CommBoard::update_imu_samples()
 {
   IMUData new_data;
-  while (queue_.try_pop(new_data)) {
+  while (imu_queue_.try_pop(new_data)) {
     if (new_data.timestamp > data_behind_.timestamp) {
       data_ahead_ = data_behind_;
       data_behind_ = new_data;
@@ -357,7 +357,7 @@ void CommBoard::handle_gimbal(const host_comm::host_gimbal_status_t & pkt)
   // 只存原始角度，各坐标系姿态由调用方 / tf 树复合：
   //   大yaw  = Rz(lower)                          （纯 yaw，无 pitch/roll）
   //   小yaw  = Rz(upper)·Ry(pitch)·Rx(roll)       （主相机所在板）
-  queue_.push({ImuState{pitch, roll, upper, lower}, std::chrono::steady_clock::now()});
+  imu_queue_.push({ImuState{pitch, roll, upper, lower}, std::chrono::steady_clock::now()});
 }
 
 void CommBoard::handle_game_status(const referee_comm::v2027::game_status_t & pkt)
@@ -573,7 +573,7 @@ void CommBoard::reconnect()
       io_->open();
       // 重连后旧半包已经没有意义，清掉重新同步；统计量保留便于定位问题
       receiver_.Reset();
-      queue_.clear();
+      imu_queue_.clear();
       logger()->info("[CommBoard] Reconnected successfully.");
       return;
     } catch (const std::exception & e) {

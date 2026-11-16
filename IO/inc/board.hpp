@@ -12,13 +12,16 @@
 #define INFO_RELAY__IO__BOARD_HPP
 
 #include <Eigen/Geometry>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "tools/types.hpp"
@@ -27,7 +30,6 @@
 #include "IO/serial/protocol/frame.hpp"
 #include "tools/config.hpp"
 #include "IO/inc/IO.hpp"
-#include "tools/queue.hpp"
 
 namespace info_relay
 {
@@ -123,6 +125,50 @@ private:
     std::chrono::steady_clock::time_point timestamp;
   };
 
+  // 固定容量 IMU 环形缓冲：无节点分配，只保留最近样本
+  class ImuRing
+  {
+  public:
+    static constexpr size_t kCapacity = 4;
+
+    void push(IMUData value)
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (size_ == kCapacity) {
+        head_ = (head_ + 1) % kCapacity;
+        --size_;
+      }
+      slots_[tail_] = std::move(value);
+      tail_ = (tail_ + 1) % kCapacity;
+      ++size_;
+    }
+
+    bool try_pop(IMUData & value)
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (size_ == 0) return false;
+      value = std::move(slots_[head_]);
+      head_ = (head_ + 1) % kCapacity;
+      --size_;
+      return true;
+    }
+
+    void clear()
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      head_ = 0;
+      tail_ = 0;
+      size_ = 0;
+    }
+
+  private:
+    std::array<IMUData, kCapacity> slots_{};
+    size_t head_ = 0;
+    size_t tail_ = 0;
+    size_t size_ = 0;
+    std::mutex mutex_;
+  };
+
   // 把队列里的新样本搬进 data_ahead_ / data_behind_
   void update_imu_samples();
 
@@ -149,7 +195,7 @@ private:
   mutable std::mutex send_mutex_;
   mutable std::mutex status_mutex_;
 
-  Queue<IMUData> queue_{1000};
+  ImuRing imu_queue_;
   IMUData data_ahead_;
   IMUData data_behind_;
 

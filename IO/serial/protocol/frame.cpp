@@ -10,6 +10,7 @@
 
 #include "IO/serial/protocol/frame.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace referee_comm
@@ -38,6 +39,26 @@ size_t Receiver::Encode(
   return total;
 }
 
+void Receiver::append(uint8_t byte)
+{
+  if (available() == MAX_PACKET) {
+    ++begin_;
+    ++stats_.garbage_bytes;
+  }
+  buffer_[end_ % MAX_PACKET] = byte;
+  ++end_;
+}
+
+const uint8_t * Receiver::view(size_t offset, size_t length, uint8_t * scratch) const
+{
+  const size_t start = (begin_ + offset) % MAX_PACKET;
+  if (start + length <= MAX_PACKET) return buffer_ + start;
+  for (size_t i = 0; i < length; ++i) {
+    scratch[i] = buffer_[(begin_ + offset + i) % MAX_PACKET];
+  }
+  return scratch;
+}
+
 void Receiver::Feed(const uint8_t * data, size_t size)
 {
   if (data == nullptr || size == 0) return;
@@ -46,27 +67,21 @@ void Receiver::Feed(const uint8_t * data, size_t size)
   has_rx_ = true;
   last_rx_ = std::chrono::steady_clock::now();
 
+  uint8_t scratch[MAX_PACKET];
   for (size_t i = 0; i < size; ++i) {
-    const uint8_t byte = data[i];
-    if (used_ == 0 && byte != SOF) {
-      stats_.garbage_bytes++;
-      continue;
-    }
+    append(data[i]);
 
-    // 等待最长候选帧的分支已保证上界，此处仅作防御。
-    if (used_ >= MAX_PACKET) Discard(1);
-    buffer_[used_++] = byte;
-
-    while (used_ > 0) {
-      if (buffer_[0] != SOF) {
+    while (available() > 0) {
+      if (at(0) != SOF) {
         Resync();
         continue;
       }
 
-      if (used_ < HEADER_SIZE) break;
+      if (available() < HEADER_SIZE) break;
       const size_t payload =
-        static_cast<size_t>(buffer_[1]) | (static_cast<size_t>(buffer_[2]) << 8);
-      if (!Verify_CRC8_Check_Sum(buffer_, HEADER_SIZE) || payload > MAX_PAYLOAD) {
+        static_cast<size_t>(at(1)) | (static_cast<size_t>(at(2)) << 8);
+      const uint8_t * bytes = view(0, HEADER_SIZE, scratch);
+      if (!Verify_CRC8_Check_Sum(bytes, HEADER_SIZE) || payload > MAX_PAYLOAD) {
         if (payload > MAX_PAYLOAD)
           stats_.payload_errors++;
         else
@@ -75,16 +90,17 @@ void Receiver::Feed(const uint8_t * data, size_t size)
         continue;
       }
       const size_t total = HEADER_SIZE + CMD_ID_SIZE + payload + TAIL_SIZE;
-      if (used_ < total) break;
-      if (!Verify_CRC16_Check_Sum(buffer_, static_cast<uint32_t>(total))) {
+      if (available() < total) break;
+      bytes = view(0, total, scratch);
+      if (!Verify_CRC16_Check_Sum(bytes, static_cast<uint32_t>(total))) {
         stats_.crc16_errors++;
         Resync();
         continue;
       }
 
       Frame frame{};
-      frame.cmd_id = static_cast<uint16_t>(buffer_[5]) | (static_cast<uint16_t>(buffer_[6]) << 8);
-      frame.data = buffer_ + HEADER_SIZE + CMD_ID_SIZE;
+      frame.cmd_id = static_cast<uint16_t>(bytes[5]) | (static_cast<uint16_t>(bytes[6]) << 8);
+      frame.data = bytes + HEADER_SIZE + CMD_ID_SIZE;
       frame.length = static_cast<uint16_t>(payload);
       stats_.frames++;
       protocol_.OnCommand(frame);
@@ -95,23 +111,25 @@ void Receiver::Feed(const uint8_t * data, size_t size)
 
 void Receiver::Reset()
 {
-  used_ = 0;
+  begin_ = 0;
+  end_ = 0;
 }
 
 void Receiver::Discard(size_t size)
 {
-  if (size > used_) size = used_;
-  used_ -= size;
-  if (size > 0 && used_ > 0) std::memmove(buffer_, buffer_ + size, used_);
+  const size_t n = std::min(size, available());
+  begin_ += n;
+  if (begin_ == end_) {
+    begin_ = 0;
+    end_ = 0;
+  }
 }
 
 void Receiver::Resync()
 {
   size_t next = 1;
-  while (next < used_) {
-    if (buffer_[next] == SOF) break;
-    ++next;
-  }
+  const size_t count = available();
+  while (next < count && at(next) != SOF) ++next;
   stats_.garbage_bytes += next;
   Discard(next);
 }
