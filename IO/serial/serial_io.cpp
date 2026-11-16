@@ -12,6 +12,7 @@
 
 #include <exception>
 
+#include "tools/comm_warning.hpp"
 #include "tools/logger.hpp"
 
 namespace info_relay::io
@@ -59,6 +60,9 @@ size_t SerialIo::read(uint8_t * buffer, size_t size, int timeout_ms)
     }
     return serial_.read(buffer, size);
   } catch (const std::exception &) {
+    comm_warnings().report(
+      CommWarningKind::SerialReadFailure, 0, static_cast<uint32_t>(size), 0,
+      options_.device.c_str());
     return 0;
   }
 }

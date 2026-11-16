@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include "tools/comm_warning.hpp"
+
 namespace referee_comm
 {
 
@@ -80,12 +82,23 @@ void Receiver::Feed(const uint8_t * data, size_t size)
       if (available() < HEADER_SIZE) break;
       const size_t payload =
         static_cast<size_t>(at(1)) | (static_cast<size_t>(at(2)) << 8);
+      const uint16_t raw_cmd = available() >= HEADER_SIZE + CMD_ID_SIZE
+                                 ? static_cast<uint16_t>(
+                                     static_cast<uint16_t>(at(HEADER_SIZE)) |
+                                     (static_cast<uint16_t>(at(HEADER_SIZE + 1)) << 8))
+                                 : 0;
       const uint8_t * bytes = view(0, HEADER_SIZE, scratch);
       if (!Verify_CRC8_Check_Sum(bytes, HEADER_SIZE) || payload > MAX_PAYLOAD) {
-        if (payload > MAX_PAYLOAD)
+        if (payload > MAX_PAYLOAD) {
           stats_.payload_errors++;
-        else
+          info_relay::comm_warnings().report(
+            info_relay::CommWarningKind::PayloadTooLong, raw_cmd, MAX_PAYLOAD,
+            static_cast<uint32_t>(payload), "serial_header");
+        } else {
           stats_.crc8_errors++;
+          info_relay::comm_warnings().report(
+            info_relay::CommWarningKind::Crc8Failure, raw_cmd, HEADER_SIZE, 0, "serial_header");
+        }
         Resync();
         continue;
       }
@@ -94,6 +107,9 @@ void Receiver::Feed(const uint8_t * data, size_t size)
       bytes = view(0, total, scratch);
       if (!Verify_CRC16_Check_Sum(bytes, static_cast<uint32_t>(total))) {
         stats_.crc16_errors++;
+        info_relay::comm_warnings().report(
+          info_relay::CommWarningKind::Crc16Failure, raw_cmd, static_cast<uint32_t>(total),
+          static_cast<uint32_t>(available()), "serial_frame");
         Resync();
         continue;
       }

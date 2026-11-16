@@ -12,6 +12,8 @@
 
 #include <cstring>
 
+#include "tools/comm_warning.hpp"
+
 namespace referee_comm
 {
 namespace v2027
@@ -20,7 +22,13 @@ namespace v2027
 template <typename T>
 bool Protocol::Assign(const Frame & frame, T & target, size_t expected)
 {
-  if (expected == 0 || expected > sizeof(T) || frame.length != expected) return false;
+  if (expected == 0 || expected > sizeof(T)) return false;
+  if (frame.length != expected) {
+    info_relay::comm_warnings().report(
+      info_relay::CommWarningKind::LengthMismatch,
+      frame.cmd_id, static_cast<uint32_t>(expected), frame.length, "referee_payload");
+    return false;
+  }
   std::memcpy(&target, frame.data, expected);
   return true;
 }
@@ -51,6 +59,9 @@ bool Protocol::OnCommand(const Frame & frame)
 
     default:
       /* 未知或已废弃命令：静默忽略，不影响字节流同步 */
+      info_relay::comm_warnings().report(
+        info_relay::CommWarningKind::UnknownCommand, frame.cmd_id, 0, frame.length,
+        "referee_command");
       return false;
   }
 }

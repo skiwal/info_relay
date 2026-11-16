@@ -31,6 +31,7 @@
 #include "IO/inc/IO.hpp"
 #include "IO/inc/board.hpp"
 #include "msg/relay_msgs.hpp"
+#include "tools/comm_warning.hpp"
 #include "tools/logger.hpp"
 
 namespace info_relay
@@ -86,11 +87,19 @@ auto & unwrap_init(Expected & exp, const char * what)
 // 输出：无
 // 备注：loan 失败（队列满）时静默丢弃本帧，转发链路不应因丢一帧阻塞
 template <typename Publisher, typename Payload>
-void publish(Publisher & pub, const Payload & payload)
+void publish(Publisher & pub, const char * channel, const Payload & payload)
 {
   auto sample = pub.loan_uninit();
-  if (!sample.has_value()) return;
-  (void)iox2::send(std::move(sample.value().write_payload(payload)));
+  if (!sample.has_value()) {
+    comm_warnings().report(
+      CommWarningKind::IpcLoanFailure, 0, 0, 0, channel);
+    return;
+  }
+  auto sent = iox2::send(std::move(sample.value().write_payload(payload)));
+  if (!sent.has_value()) {
+    comm_warnings().report(
+      CommWarningKind::IpcSendFailure, 0, 0, 0, channel);
+  }
 }
 }  // namespace
 
@@ -183,7 +192,6 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
 
   uint64_t seq_imu = 0, seq_ch = 0, seq_rb = 0, seq_gm = 0, seq_hl = 0;
   uint64_t tx_commands = 0;  // 已写串口的下行指令数
-  uint64_t crc_errors = 0;   // 预留字段：协议层暂未暴露校验失败计数
   int64_t last_rx_ns = 0;    // 最后一次收到上行帧的时刻
   uint64_t last_frame_count = board.rx_frame_count();  // 上一拍已处理的帧计数
   uint16_t last_latency_us = 0;  // 最近一帧 AimCmd 从视觉发出到写入串口的耗时
@@ -197,14 +205,25 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
     const auto now = std::chrono::steady_clock::now();
     const int64_t now_ns = to_ns(now);
 
+    // 周期性汇总输出通信告警，不在错误发生点直接打日志
+    comm_warnings().flush_if_due();
+
     // ---- 下行：排空所有待处理指令，只执行最后一条 ----
     msg::AimCmd aim{};
     bool has_aim = false;
     auto taken = aim_sub.receive();
+    if (!taken.has_value()) {
+      comm_warnings().report(
+        CommWarningKind::IpcReceiveFailure, 0, 0, 0, msg::kTopicCmdAim);
+    }
     while (taken.has_value() && taken.value().has_value()) {
       aim = taken.value().value().payload();
       has_aim = true;
       taken = aim_sub.receive();
+      if (!taken.has_value()) {
+        comm_warnings().report(
+          CommWarningKind::IpcReceiveFailure, 0, 0, 0, msg::kTopicCmdAim);
+      }
     }
     if (has_aim) {
       info_relay::Command cmd{};
@@ -223,10 +242,18 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
     msg::NavCmd nav{};
     bool has_nav = false;
     auto nav_taken = nav_sub.receive();
+    if (!nav_taken.has_value()) {
+      comm_warnings().report(
+        CommWarningKind::IpcReceiveFailure, 0, 0, 0, msg::kTopicCmdNav);
+    }
     while (nav_taken.has_value() && nav_taken.value().has_value()) {
       nav = nav_taken.value().value().payload();
       has_nav = true;
       nav_taken = nav_sub.receive();
+      if (!nav_taken.has_value()) {
+        comm_warnings().report(
+          CommWarningKind::IpcReceiveFailure, 0, 0, 0, msg::kTopicCmdNav);
+      }
     }
     if (has_nav) {
       info_relay::NavCommand cmd{};
@@ -258,7 +285,7 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
       // 关节角 = 小yaw 世界角 - 大yaw 世界角；单yaw 构型下两者相等，恒为 0
       m.upper_yaw_rad = static_cast<float>(imu.upper_yaw - imu.lower_yaw);
       m.fold_yaw_rad = 0.0F;  // 折叠构型（gimbal_type=3）本赛制不使用
-      publish(imu_pub, m);
+      publish(imu_pub, msg::kTopicImu, m);
     }
 
     // ---- 底盘反馈：固定 100Hz 发布最新快照 ----
@@ -273,7 +300,7 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
       c.speed_y = ch.speed_y;
       c.speed_turn = ch.speed_turn;
       c.feedback_angle = ch.feedback_angle;
-      publish(ch_pub, c);
+      publish(ch_pub, msg::kTopicChassis, c);
     }
 
     // ---- 机器人与比赛状态：1Hz ----
@@ -295,7 +322,7 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
       // bit0 机器人状态已收到、bit1 比赛状态已收到、bit2 保留（恒为 1 表示 relay 在线）
       r.valid_mask = static_cast<uint8_t>(
         (rs.robot_status_valid ? 0x01 : 0x00) | (rs.game_status_valid ? 0x02 : 0x00) | 0x04);
-      publish(rb_pub, r);
+      publish(rb_pub, msg::kTopicRobot, r);
 
       const auto gs = board.game_status();
       msg::Game g{};
@@ -305,7 +332,7 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
       g.game_progress = gs.game_progress;
       g.in_battle = board.is_game_started() ? 1 : 0;
       g.valid = rs.game_status_valid ? 1 : 0;
-      publish(gm_pub, g);
+      publish(gm_pub, msg::kTopicGame, g);
     }
 
     // ---- 链路健康：10Hz，链路失效时照常发布，由字段表达状态 ----
@@ -320,19 +347,22 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
       h.seq = ++seq_hl;
       h.last_rx_ns = static_cast<uint64_t>(last_rx_ns < 0 ? 0 : last_rx_ns);
       h.rx_frames = static_cast<uint32_t>(frames);
-      h.crc_errors = static_cast<uint32_t>(crc_errors);
+      h.crc_errors = static_cast<uint32_t>(
+        comm_warnings().count(CommWarningKind::Crc8Failure) +
+        comm_warnings().count(CommWarningKind::Crc16Failure));
       h.tx_commands = static_cast<uint32_t>(tx_commands);
       h.transport_ok = link_ok ? 1 : 0;
       h.source_kind = link_kind;
       h.last_latency_us = last_latency_us;
       h.schema_version = msg::kSchemaVersion;  // 运行期握手：视觉侧据此判断契约是否同版
-      publish(hl_pub, h);
+      publish(hl_pub, msg::kTopicHealth, h);
     }
 
     next_tick += kTick;
     std::this_thread::sleep_until(next_tick);
   }
 
+  comm_warnings().flush();
   logger()->info("[relay] 退出：下行 {} 条，上行 {} 帧", tx_commands, last_frame_count);
   return 0;
 }

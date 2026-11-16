@@ -12,13 +12,21 @@
 
 #include <cstring>
 
+#include "tools/comm_warning.hpp"
+
 namespace host_comm
 {
 
 template <typename T>
 bool Protocol::Assign(const referee_comm::Frame & frame, T & target, size_t expected)
 {
-  if (expected == 0 || expected > sizeof(T) || frame.length != expected) return false;
+  if (expected == 0 || expected > sizeof(T)) return false;
+  if (frame.length != expected) {
+    info_relay::comm_warnings().report(
+      info_relay::CommWarningKind::LengthMismatch,
+      frame.cmd_id, static_cast<uint32_t>(expected), frame.length, "host_payload");
+    return false;
+  }
   std::memcpy(&target, frame.data, expected);
   return true;
 }
@@ -48,6 +56,9 @@ bool Protocol::OnCommand(const referee_comm::Frame & frame)
       return Assign(frame, log, sizeof(host_log_t));
     default:
       /* 未知或已废弃命令：静默忽略，不影响字节流同步 */
+      info_relay::comm_warnings().report(
+        info_relay::CommWarningKind::UnknownCommand, frame.cmd_id, 0, frame.length,
+        "host_command");
       return false;
   }
 }

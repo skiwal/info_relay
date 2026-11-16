@@ -60,7 +60,26 @@
 
 ---
 
-## 4. 通信输入与输出
+## 4. 通信异常告警
+
+通信异常采用“错误点静默统计，主循环周期输出”的机制：
+
+- CRC8 / CRC16 失败、载荷超长、固定 POD 长度不匹配、未知命令；
+- CAN DLC 错误、分片校验失败、重复分片、不完整分片；
+- IPC `receive()` 失败、`loan_uninit()` 失败、`send()` 失败；
+- 串口读取异常。
+
+错误发生点只调用 `comm_warnings().report(...)` 累加计数并记录少量上下文，不抛异常、不直接打日志、不改变原有丢弃/重同步流程。`relay` 主循环每秒调用一次 `flush_if_due()`，输出统一格式的 `warning`：
+
+```text
+[CommWarn] <ERROR_TYPE> total=<累计次数> new=<本次新增> cmd=0x<命令码> expected=<期望值> actual=<实际值> context=<来源> last_ns=<最近发生时刻>
+```
+
+日志同时给出累计次数与自上次输出以来的新增次数，便于区分偶发与持续异常。退出前会强制再 flush 一次。当前该机制固定开启，不属于可配置开关；严重初始化失败仍保持原有 `error` 日志和退出行为。
+
+---
+
+## 5. 通信输入与输出
 
 **输入**：`IO::read(buf, size, timeout_ms)` 返回的字节流。
 
@@ -81,7 +100,7 @@
 
 ---
 
-## 5. 订阅端接收约定
+## 6. 订阅端接收约定
 
 | 项 | 约定 |
 | --- | --- |
@@ -93,7 +112,7 @@
 
 ---
 
-## 6. 启动与验证
+## 7. 启动与验证
 
 ```bash
 ./build/info_relay configs/info_relay.yaml
@@ -109,7 +128,7 @@
 
 ---
 
-## 7. 依赖
+## 8. 依赖
 
 iceoryx2 以系统库形式安装；CMake 从 `find_package(iceoryx2-cxx REQUIRED)` 解析。
 串口实现使用仓库内的 `3rdparty/serial`；CAN 实现使用 Linux SocketCAN。

@@ -24,6 +24,7 @@
 #include <exception>
 
 #include "IO/can/protocol/downlink.hpp"
+#include "tools/comm_warning.hpp"
 #include "tools/logger.hpp"
 
 namespace info_relay::io
@@ -79,10 +80,25 @@ bool CanIo::open()
 
 bool CanIo::consume_frame(const can::protocol::CanFrame & frame)
 {
-  if (frame.dlc != 8) return false;
+  const auto can_id = static_cast<uint16_t>(frame.id & 0xFFFFU);
+  if (frame.dlc != 8) {
+    comm_warnings().report(
+      CommWarningKind::CanBadDlc, can_id, 8, frame.dlc, options_.device.c_str());
+    return false;
+  }
   auto chunk = can::protocol::decode_chunk(frame.data.data());
-  if (!can::protocol::chunk_valid(chunk)) return false;
-  if (chunk.seq == last_rx_seq_) return false;
+  if (!can::protocol::chunk_valid(chunk)) {
+    comm_warnings().report(
+      CommWarningKind::CanChunkCrcFailure, can_id, chunk.seq, chunk.index,
+      options_.device.c_str());
+    return false;
+  }
+  if (chunk.seq == last_rx_seq_) {
+    comm_warnings().report(
+      CommWarningKind::CanDuplicateChunk, can_id, last_rx_seq_, chunk.seq,
+      options_.device.c_str());
+    return false;
+  }
 
   auto & group = pending_[chunk.seq];
   group[chunk.index] = chunk;
@@ -91,7 +107,13 @@ bool CanIo::consume_frame(const can::protocol::CanFrame & frame)
   std::vector<uint8_t> assembled;
   for (uint8_t i = 0; i < chunk.count; ++i) {
     const auto it = group.find(i);
-    if (it == group.end()) return false;
+    if (it == group.end()) {
+      comm_warnings().report(
+        CommWarningKind::CanIncompleteChunk, can_id, chunk.count, group.size(),
+        options_.device.c_str());
+      pending_.erase(chunk.seq);
+      return false;
+    }
     const auto & part = it->second;
     assembled.insert(assembled.end(), part.data, part.data + part.len);
   }
