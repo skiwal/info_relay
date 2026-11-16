@@ -1,4 +1,14 @@
 /*
+ * info_relay - 串口与导航通信中转进程
+ * Copyright (c) 2026 Navigator Vision Team
+ *
+ * 代码来源 / Source: Navigator Vision Team
+ * 仓库 / Repository: https://github.com/skiwal/info_relay
+ * 队徽 / Team logo: assets/logo.jpg
+ * SPDX-License-Identifier: MIT
+ */
+
+/*
  * info_relay 进程入口：读配置 → 初始化日志 → 打开串口链路 → 运行转发主循环。
  *
  * 数据流：配置文件 → RelayConfig → init_logging() → SerialBoard 打开传输层并起接收线程

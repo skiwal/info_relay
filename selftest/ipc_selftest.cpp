@@ -1,4 +1,14 @@
 /*
+ * info_relay - 串口与导航通信中转进程
+ * Copyright (c) 2026 Navigator Vision Team
+ *
+ * 代码来源 / Source: Navigator Vision Team
+ * 仓库 / Repository: https://github.com/skiwal/info_relay
+ * 队徽 / Team logo: assets/logo.jpg
+ * SPDX-License-Identifier: MIT
+ */
+
+/*
  * iceoryx2 最小联通自检：在单进程内建一对发布者/订阅者，验证本机能否创建服务、
  * 共享内存能否收发、载荷能否按原样往返。
  *

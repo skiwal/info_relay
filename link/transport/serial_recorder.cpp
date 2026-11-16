@@ -1,4 +1,14 @@
 /*
+ * info_relay - 串口与导航通信中转进程
+ * Copyright (c) 2026 Navigator Vision Team
+ *
+ * 代码来源 / Source: Navigator Vision Team
+ * 仓库 / Repository: https://github.com/skiwal/info_relay
+ * 队徽 / Team logo: assets/logo.jpg
+ * SPDX-License-Identifier: MIT
+ */
+
+/*
  * 串口原始字节记录/回放的实现：私有二进制格式的写盘与读取。
  *
  * 文件布局（小端，与 x86_64 / aarch64 一致）：

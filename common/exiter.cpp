@@ -1,4 +1,14 @@
 /*
+ * info_relay - 串口与导航通信中转进程
+ * Copyright (c) 2026 Navigator Vision Team
+ *
+ * 代码来源 / Source: Navigator Vision Team
+ * 仓库 / Repository: https://github.com/skiwal/info_relay
+ * 队徽 / Team logo: assets/logo.jpg
+ * SPDX-License-Identifier: MIT
+ */
+
+/*
  * 退出信号的实现：把 SIGINT/SIGTERM 写进一个原子标志。
  *
  * 注意：契约见 exiter.hpp，本文件只写实现要点。

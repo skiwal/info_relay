@@ -1,4 +1,14 @@
 /*
+ * info_relay - 串口与导航通信中转进程
+ * Copyright (c) 2026 Navigator Vision Team
+ *
+ * 代码来源 / Source: Navigator Vision Team
+ * 仓库 / Repository: https://github.com/skiwal/info_relay
+ * 队徽 / Team logo: assets/logo.jpg
+ * SPDX-License-Identifier: MIT
+ */
+
+/*
  * ROS 2 门面实现：把节点与 spin 线程的创建/销毁全部收拢在构造与析构里。
  *
  * 数据流：

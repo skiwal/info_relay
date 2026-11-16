@@ -1,4 +1,14 @@
 /*
+ * info_relay - 串口与导航通信中转进程
+ * Copyright (c) 2026 Navigator Vision Team
+ *
+ * 代码来源 / Source: Navigator Vision Team
+ * 仓库 / Repository: https://github.com/skiwal/info_relay
+ * 队徽 / Team logo: assets/logo.jpg
+ * SPDX-License-Identifier: MIT
+ */
+
+/*
  * relay 主循环实现：iceoryx2 主题装配 + 500Hz 转发节拍。
  *
  * 发布主题（relay → 任意进程）：imu 500Hz、chassis 100Hz、robot/game 1Hz、health 10Hz

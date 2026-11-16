@@ -1,4 +1,14 @@
 /*
+ * info_relay - 串口与导航通信中转进程
+ * Copyright (c) 2026 Navigator Vision Team
+ *
+ * 代码来源 / Source: Navigator Vision Team
+ * 仓库 / Repository: https://github.com/skiwal/info_relay
+ * 队徽 / Team logo: assets/logo.jpg
+ * SPDX-License-Identifier: MIT
+ */
+
+/*
  * 日志门面的实现：spdlog 控制台 + 文件双 sink，文件名带启动时刻。
  *
  * 数据流：init_logging(dir) → create_directories(dir) → basic_file_sink(dir/<时间>.log)

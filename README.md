@@ -1,5 +1,12 @@
 # info_relay
 
+<p align="center">
+  <img src="assets/logo.jpg" alt="Navigator Vision Team 队徽" width="220">
+</p>
+
+**战队 / Team：** Navigator Vision Team  
+**代码来源 / Source：** Navigator Vision Team，本仓库自研代码的文件头均标注来源与 MIT 标识。
+
 串口与导航通信中转进程。整机唯一持有串口的程序：解析下位机协议后通过 iceoryx2 发布，
 并接收视觉进程下发的云台指令写回串口。
 
@@ -94,3 +101,10 @@ cmake --build build --parallel
 `Health.schema_version` 用于运行期握手：视觉侧持有自己的线格式副本（`kSchemaVersion`），
 两者不符时视觉侧会判链路失效。**修改 `msg/relay_msgs.hpp` 必须同时递增两侧的
 `kSchemaVersion` 并同步字段**，只改一侧会导致握手失败。
+
+## 许可证
+
+本仓库自研代码由 Navigator Vision Team 所有，采用 **MIT License** 发布，完整条款见 [`LICENSE`](LICENSE)。
+每个自研代码文件头部均带有 `SPDX-License-Identifier: MIT` 标识。
+
+`3rdparty/serial` 为第三方代码，保留其上游版权声明与许可证；这部分文件不适用本仓库的上述 MIT 授权声明。
