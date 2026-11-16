@@ -35,8 +35,6 @@ sudo cmake --install iceoryx2/build --prefix /usr/local
 
 导航桥接为可选：找不到 ROS 2 时整段跳过，不影响串口与 iceoryx2 功能。
 
-**不依赖 OpenCV 与 FFmpeg** —— 它们只属于视觉工程。
-
 ## 构建
 
 ```bash
