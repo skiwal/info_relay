@@ -7,21 +7,42 @@
 **战队 / Team：** Navigator Vision Team  
 **代码来源 / Source：** Navigator Vision Team，本仓库自研代码的文件头均标注来源与 MIT 标识。
 
-串口与导航通信中转进程。整机唯一持有串口的程序：解析下位机协议后通过 iceoryx2 发布，
-并接收视觉进程下发的云台指令写回串口。
+串口 / CAN 通信中转进程。整机唯一持有下位机通信链路的程序：解析协议后通过 iceoryx2 发布，
+并接收任意外部进程写入的指令，通过同一通信链路发回下位机。
 
-本仓库与视觉自瞄工程完全解耦：不引用其源码、头文件、构建产物或运行产物，
-可以独立克隆、独立构建、独立运行。
+本仓库与视觉、导航工程完全解耦：不引用其源码、头文件、构建产物或运行产物，
+也不维护 ROS 2 节点；ROS 2 与 iceoryx2 的桥接由导航侧自行负责。
+
+## 项目结构
+
+```text
+src/                     relay 中转主流程：启动链路、装配 iceoryx2 节点、转发与节流
+  relay.cpp/.hpp
+main.cpp                 进程入口：配置、日志、退出信号，然后进入 src/relay
+tools/                   通用工具：配置加载、日志、路径、退出信号、IPC 自检
+IO/
+  inc/IO.hpp             通信方式接口模板：init / open / read / write / close
+  inc/board.hpp          通信板：持有 IO 实例，完成分帧、协议解析与状态搬运
+  io_factory.cpp         按配置创建串口或 CAN 实现
+  serial/                串口实现（基于 3rdparty/serial）
+    protocol/            串口 CRC、帧结构与读写数据结构体
+  can/                   SocketCAN 实现
+    protocol/            CAN CRC、帧结构与读写数据结构体
+msg/relay_msgs.hpp       对外 iceoryx2 线格式契约（与视觉/导航侧共用）
+configs/                 运行配置
+docs/                    设计说明
+```
 
 ## 职责边界
 
 | 负责 | 不负责 |
 | --- | --- |
-| 打开/关闭串口、断链重连 | 相机采集与推理 |
+| 打开/关闭通信链路、断链重连 | 相机采集与推理 |
 | 分帧、CRC、协议解析 | PnP、跟踪、瞄准决策 |
 | 解析结果发布到 iceoryx2 | 录像与图像调试流 |
-| 订阅视觉/导航指令并写串口 | 开火判据（由视觉侧决定） |
+| 接收外部指令并通过通信链路写回下位机 | 开火判据（由视觉侧决定） |
 | — | ROS 2 节点与桥接（导航侧自行维护） |
+| — | 虚拟下位机、模拟数据与录制回放 |
 
 ## 依赖
 
@@ -31,7 +52,7 @@
 build-essential cmake libyaml-cpp-dev libspdlog-dev libfmt-dev libeigen3-dev
 ```
 
-跨进程通信库 iceoryx2 需**系统级安装**（与视觉工程共用同一份）：
+跨进程通信库 iceoryx2 需**系统级安装**（与外部进程共用同一份）：
 
 ```bash
 git clone --depth 1 --branch v0.10.0 https://github.com/eclipse-iceoryx/iceoryx2.git
@@ -40,8 +61,8 @@ cmake --build iceoryx2/build --parallel          # 需要 Rust 工具链（cargo
 sudo cmake --install iceoryx2/build --prefix /usr/local
 ```
 
-本工程只维护一套 iceoryx2 中转通路；ROS 2 与 iceoryx2 的桥接由导航侧自行维护，
-不在本仓库构建、链接或运行。
+CAN 链路使用 Linux SocketCAN，需在系统中提前配置好网络接口（如 `can0`）；
+当前 CAN 协议为 8 字节分片方案，具体 CAN ID 由 `configs/info_relay.yaml` 配置。
 
 ## 构建
 
@@ -78,7 +99,6 @@ cmake --build build --parallel
 | 用途 | 默认位置 | 可否修改 |
 | --- | --- | --- |
 | 运行日志 | `<repo>/logs/<启动时刻>.log` | 配置 `log_dir` |
-| 串口字节录制 | `<repo>/records/relay_session/` | 配置 `record.dir` |
 | 默认配置 | `<repo>/configs/info_relay.yaml` | 命令行参数 |
 | 构建产物 | `<repo>/build/` | 由构建命令决定 |
 
@@ -88,20 +108,20 @@ cmake --build build --parallel
 ## 与其他进程的契约
 
 主题为 `<relay_prefix>/<topic>`，默认前缀 `rm_vision`。载荷为定长 POD，
-定义见 `msg/relay_msgs.hpp`。
+定义见 `msg/relay_msgs.hpp`。所有主题对任何有需求的进程开放，不区分导航与自瞄。
 
 | 主题 | 载荷 | 频率 | 方向 |
 | --- | --- | --- | --- |
-| `imu` | `Imu` | 500 Hz | relay → 视觉 |
-| `chassis` | `Chassis` | 100 Hz | relay → 视觉 |
-| `robot` / `game` | `Robot` / `Game` | 1 Hz | relay → 视觉 |
+| `imu` | `Imu` | 500 Hz | relay → 外部 |
+| `chassis` | `Chassis` | 100 Hz | relay → 外部 |
+| `robot` / `game` | `Robot` / `Game` | 1 Hz | relay → 外部 |
 | `health` | `Health` | 10 Hz | relay → 任意 |
-| `cmd_aim` | `AimCmd` | 视觉帧率 | 视觉 → relay |
-| `cmd_nav` | `NavCmd` | 导航帧率 | 视觉/导航 → relay |
+| `cmd_aim` | `AimCmd` | 外部帧率 | 外部 → relay |
+| `cmd_nav` | `NavCmd` | 外部帧率 | 外部 → relay |
 
-`Health.schema_version` 用于运行期握手：视觉侧持有自己的线格式副本（`kSchemaVersion`），
-两者不符时视觉侧会判链路失效。**修改 `msg/relay_msgs.hpp` 必须同时递增两侧的
-`kSchemaVersion` 并同步字段**，只改一侧会导致握手失败。
+`Health.schema_version` 用于运行期握手。当前 `kSchemaVersion = 3`：`source_kind` 语义已改为
+通信链路类型（0 serial / 1 can），移除了 fake/replay。外部侧必须同步 `kSchemaVersion` 与字段语义，
+否则链路会被判为契约不匹配。
 
 ## 许可证
 

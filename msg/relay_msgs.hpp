@@ -37,7 +37,8 @@ namespace info_relay::msg
 {
 // 契约版本：字段或线格式任何变化都必须递增；订阅端收到首个 Health 后比对，不符即判链路不可用。
 // 版本 2：Health 尾部填充位启用为 schema_version，用于运行期握手（尺寸仍为 48 字节）。
-inline constexpr uint16_t kSchemaVersion = 2;
+// 版本 3：Health.source_kind 改为通信链路类型（0 serial / 1 can），移除虚拟数据源语义。
+inline constexpr uint16_t kSchemaVersion = 3;
 
 // 主题名前缀，实际主题为 "<prefix>/<topic>"；前缀由配置文件给出，便于同机跑多套实例
 inline constexpr const char * kDefaultPrefix = "rm_vision";
@@ -52,12 +53,11 @@ inline constexpr const char * kTopicHealth = "health";    // 链路健康，10Hz
 inline constexpr const char * kTopicCmdAim = "cmd_aim";   // 云台瞄准指令
 inline constexpr const char * kTopicCmdNav = "cmd_nav";   // 导航速度指令
 
-// 数据源类型，与 io::sim::SourceMode 一一对应，用于 Health 里对外说明当前链路形态
+// 通信链路类型，用于 Health 对外说明当前链路形态
 enum class SourceKind : uint8_t
 {
-  Real = 0,    // 真实串口
-  Fake = 1,    // 内置虚拟下位机或外部 pty
-  Replay = 2,  // 原始字节回放
+  Serial = 0,  // 串口链路
+  Can = 1,     // CAN 链路
 };
 
 // 云台姿态与自瞄裁决：源 0x0503（500Hz），gimbal_type / uptime_ms 取自 0x0500（1Hz）缓存
@@ -136,7 +136,7 @@ struct alignas(8) Health
   uint32_t tx_commands;     // 累计写入串口的下行指令数
   uint32_t rx_hz_x100;      // 最近 1s 上行帧率 ×100（定点表示，10 表示 0.10Hz）
   uint8_t transport_ok;     // 1 表示链路健康（recent_timeout_ms 内有合法帧）
-  uint8_t source_kind;      // 当前数据源：0 real / 1 fake / 2 replay
+  uint8_t source_kind;      // 当前通信链路：0 serial / 1 can
   uint16_t last_latency_us; // 最近一帧 AimCmd 从视觉发出到写入串口的耗时，us
   uint16_t schema_version;  // 契约版本，取 kSchemaVersion；订阅端据此做运行期握手
   uint16_t reserved1;       // 对齐填充，恒为 0；保留给后续追加字段

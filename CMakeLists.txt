@@ -7,17 +7,11 @@
 # SPDX-License-Identifier: MIT
 
 # =====================================================================================
-#  info_relay —— 串口与导航通信中转进程（独立工程）
+#  info_relay —— 通信中转进程（独立工程）
 #
-#  职责：独占串口、解析下位机协议，通过 iceoryx2 对外发布；整机唯一打开串口的程序。
-#
-#  依赖：yaml-cpp（配置）、spdlog/fmt（日志）、iceoryx2（跨进程，系统库）、
-#        libserial（模块内 3rdparty/serial）。
+#  分层：src/ 转发主流程；tools/ 通用工具；IO/ 通信抽象与 serial/can 实现。
+#  依赖：yaml-cpp、spdlog/fmt、Eigen3、iceoryx2（系统库）、3rdparty/serial。
 #        刻意不依赖 ROS 2、OpenCV 与 FFmpeg —— 它们属于导航/视觉侧工程。
-#
-#  构建：cmake -S . -B build && cmake --build build
-#  产物：build/info_relay、build/ipc_selftest；运行日志在 <repo>/logs，
-#        串口录制在 <repo>/records，均不出仓库目录。
 # =====================================================================================
 cmake_minimum_required(VERSION 3.16)
 
@@ -35,9 +29,7 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(platform)
 
-# ---------------------------------------------------------------------------
-# 第三方依赖：全部走系统包，不在仓库内 vendor 二进制
-# ---------------------------------------------------------------------------
+find_package(Threads REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
@@ -46,69 +38,62 @@ find_package(iceoryx2-cxx REQUIRED)
 
 message(STATUS "[info_relay] iceoryx2 配置目录 ${iceoryx2-cxx_DIR}")
 
-# 串口字节库：随模块自带，只服务本工程
 add_subdirectory(3rdparty/serial)
 
 # ---------------------------------------------------------------------------
-# relay_common：日志 / YAML / 信号退出 / 路径解析 / 配置加载
+# relay_tools：配置 / 日志 / 退出信号 / 路径解析
 # ---------------------------------------------------------------------------
-add_library(relay_common STATIC
-    common/logger.cpp
-    common/exiter.cpp
-    common/paths.cpp
-    config.cpp
+add_library(relay_tools STATIC
+    tools/logger.cpp
+    tools/exiter.cpp
+    tools/paths.cpp
+    tools/config.cpp
 )
-target_include_directories(relay_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(relay_common PUBLIC yaml-cpp Eigen3::Eigen)
+target_include_directories(relay_tools PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(relay_tools PUBLIC yaml-cpp Eigen3::Eigen Threads::Threads)
 
-# spdlog 在多数发行版以 header-only 形式提供，编译版才需要显式链接
 if(TARGET spdlog::spdlog)
-  target_link_libraries(relay_common PUBLIC spdlog::spdlog)
+  target_link_libraries(relay_tools PUBLIC spdlog::spdlog)
 endif()
 if(TARGET fmt::fmt)
-  target_link_libraries(relay_common PUBLIC fmt::fmt)
+  target_link_libraries(relay_tools PUBLIC fmt::fmt)
 endif()
 
 # ---------------------------------------------------------------------------
-# relay_link：字节传输 + 分帧 + 协议解析 + 串口字节记录
+# relay_io：IO 抽象、serial/can 实现与各自协议
 # ---------------------------------------------------------------------------
-add_library(relay_link OBJECT
-    # 收发线程与状态搬运
-    link/serial_link.cpp
-    # 分帧与号段分派
-    link/protocol/link.cpp
-    # 0x05xx 上行（host）与裁判转发（赛季协议）
-    link/protocol/host_protocol.cpp
-    link/protocol/referee.cpp
-    link/protocol/seasons/2027/protocol.cpp
-    # 下行报文与 CRC
-    link/protocol/gimbal/protocol_crc.cpp
-    # 数据源：真实串口 / 内置虚拟下位机 / 回放
-    link/transport/transport.cpp
-    link/transport/virtual_mcu.cpp
-    link/transport/quaternion_source.cpp
-    link/transport/serial_recorder.cpp
+add_library(relay_io OBJECT
+    IO/board.cpp
+    IO/io_factory.cpp
+    IO/serial/serial_io.cpp
+    IO/serial/protocol/crc.cpp
+    IO/serial/protocol/frame.cpp
+    IO/serial/protocol/uplink_host.cpp
+    IO/serial/protocol/uplink_referee.cpp
+    IO/serial/protocol/dispatch.cpp
+    IO/can/can_io.cpp
+    IO/can/protocol/crc.cpp
 )
-target_link_libraries(relay_link PUBLIC relay_common serial)
+target_link_libraries(relay_io PUBLIC relay_tools serial)
 
 # ---------------------------------------------------------------------------
-# relay 进程
+# info_relay 进程：入口 + src 转发主流程
 # ---------------------------------------------------------------------------
 add_executable(info_relay
     main.cpp
-    relay.cpp
+    src/relay.cpp
 )
 target_link_libraries(info_relay PRIVATE
-    relay_link
-    relay_common
+    relay_io
+    relay_tools
     serial
     iceoryx2-cxx::static-lib-cxx
 )
 
 # ---------------------------------------------------------------------------
-# 最小发布订阅自检：验证依赖与共享内存通路，不参与业务逻辑
+# 最小发布订阅自检：只验证 iceoryx2 依赖，不参与业务逻辑
 # ---------------------------------------------------------------------------
-add_executable(ipc_selftest selftest/ipc_selftest.cpp)
+add_executable(ipc_selftest tools/ipc_selftest.cpp)
 target_link_libraries(ipc_selftest PRIVATE iceoryx2-cxx::static-lib-cxx)
 
 install(TARGETS info_relay ipc_selftest RUNTIME DESTINATION bin)

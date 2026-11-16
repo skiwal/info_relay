@@ -1,7 +1,6 @@
 # 构建产物与运行产物全部在仓库内生成，但都不纳入版本控制
 /build/
 /logs/
-/records/
 /install/
 
 # 编译中间产物
@@ -13,3 +12,5 @@
 # 编辑器和工具链缓存
 .cache/
 compile_commands.json
+
+.idea
