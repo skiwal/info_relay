@@ -15,7 +15,7 @@
  * 中转进程内部使用的业务结构体：下行指令、导航指令、裁判状态、云台姿态。
  *
  * 数据流：解析结果 → ImuState / RefereeState → 打包成 msg 里的 POD 发布；
- *         视觉下发的 AimCmd → Command → 打包成 0x0402 写串口。
+ *         视觉/导航下发的 AimCmd/NavCmd → Command/NavCommand → 打包成 0x0402/0x0405 写串口。
  *
  * 依赖与边界：只放纯数据，不含任何算法；本文件不依赖 third_party 与视觉工程。
  *

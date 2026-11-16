@@ -97,12 +97,6 @@ SerialBoard::~SerialBoard()
   quit_ = true;
   if (receive_thread_.joinable()) receive_thread_.join();
 
-  {
-    // 接收线程已退出，回调可以安全释放（其捕获的 ROS 节点 shared_ptr 随之释放）
-    std::lock_guard<std::mutex> lock(joint_callback_mutex_);
-    joint_callback_ = nullptr;
-  }
-
   if (transport_) transport_->close();
   if (recorder_) recorder_->close();
 }
@@ -226,8 +220,8 @@ void SerialBoard::send(NavCommand command) const
   packet.vy = static_cast<float>(command.vy);
   packet.vy = -packet.vy;
   packet.wz = static_cast<float>(command.wz);
-  // 目标航向角：已确认暂时固定发 0（导航侧目前只发 geometry_msgs::Twist，没有航向字段）；
-  // 将来导航话题提供航向后，由 info_relay::NavCommand::target_angle 透传上来即可。
+  // 目标航向角：iceoryx2 的 NavCmd 线格式没有航向字段，当前固定发 0；
+  // 将来线格式扩展后由 info_relay::NavCommand::target_angle 透传。
   packet.target_angle = static_cast<float>(command.target_angle);
 
   crc16::Append_CRC16_Check_Sum(
@@ -242,12 +236,6 @@ void SerialBoard::send(NavCommand command) const
   } catch (const std::exception & e) {
     logger()->warn("[SerialBoard] Failed to write source: {}", e.what());
   }
-}
-
-void SerialBoard::set_gimbal_joint_callback(GimbalJointCallback callback)
-{
-  std::lock_guard<std::mutex> lock(joint_callback_mutex_);
-  joint_callback_ = std::move(callback);
 }
 
 GameStatus SerialBoard::game_status() const
@@ -396,26 +384,6 @@ void SerialBoard::handle_gimbal(const host_comm::host_gimbal_status_t & pkt)
 
   upper = wrap_2pi(upper);
   lower = wrap_2pi(lower);
-
-  // —— 云台关节反馈（ROS2 JointState）——
-  // 每帧新采样回调一次，绝不在没收到新帧时重复包装旧角度。
-  // 大yaw 轴没有俯仰自由度，pitch 恒为 0。
-  // 注意：这里下发的是世界系绝对角；导航侧要的「相对底盘」可用 0x0502 的
-  // feedback_angle 修正为 limit_rad(lower - chassis_yaw)，待导航接口定稿再接。
-  {
-    GimbalJointCallback callback;
-    {
-      std::lock_guard<std::mutex> lock(joint_callback_mutex_);
-      callback = joint_callback_;
-    }
-    if (callback) {
-      try {
-        callback(limit_rad(lower), 0.0);
-      } catch (const std::exception & e) {
-        logger()->warn("[SerialBoard] Gimbal joint callback failed: {}", e.what());
-      }
-    }
-  }
 
   if (!first_imu_received_) {
     first_imu_received_ = true;

@@ -20,8 +20,8 @@
 | 打开/关闭串口、断链重连 | 相机采集与推理 |
 | 分帧、CRC、协议解析 | PnP、跟踪、瞄准决策 |
 | 解析结果发布到 iceoryx2 | 录像与图像调试流 |
-| 订阅视觉指令并写串口 | 开火判据（由视觉侧决定） |
-| 导航速度订阅、云台关节与裁判话题发布 | — |
+| 订阅视觉/导航指令并写串口 | 开火判据（由视觉侧决定） |
+| — | ROS 2 节点与桥接（导航侧自行维护） |
 
 ## 依赖
 
@@ -40,7 +40,8 @@ cmake --build iceoryx2/build --parallel          # 需要 Rust 工具链（cargo
 sudo cmake --install iceoryx2/build --prefix /usr/local
 ```
 
-导航桥接为可选：找不到 ROS 2 时整段跳过，不影响串口与 iceoryx2 功能。
+本工程只维护一套 iceoryx2 中转通路；ROS 2 与 iceoryx2 的桥接由导航侧自行维护，
+不在本仓库构建、链接或运行。
 
 ## 构建
 
@@ -96,7 +97,7 @@ cmake --build build --parallel
 | `robot` / `game` | `Robot` / `Game` | 1 Hz | relay → 视觉 |
 | `health` | `Health` | 10 Hz | relay → 任意 |
 | `cmd_aim` | `AimCmd` | 视觉帧率 | 视觉 → relay |
-| `cmd_nav` | `NavCmd` | 导航帧率 | 视觉 → relay |
+| `cmd_nav` | `NavCmd` | 导航帧率 | 视觉/导航 → relay |
 
 `Health.schema_version` 用于运行期握手：视觉侧持有自己的线格式副本（`kSchemaVersion`），
 两者不符时视觉侧会判链路失效。**修改 `msg/relay_msgs.hpp` 必须同时递增两侧的

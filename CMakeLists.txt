@@ -12,8 +12,8 @@
 #  职责：独占串口、解析下位机协议，通过 iceoryx2 对外发布；整机唯一打开串口的程序。
 #
 #  依赖：yaml-cpp（配置）、spdlog/fmt（日志）、iceoryx2（跨进程，系统库）、
-#        libserial（模块内 3rdparty/serial）、rclcpp（可选，导航桥接）。
-#        刻意不依赖 OpenCV 与 FFmpeg —— 它们只属于视觉工程。
+#        libserial（模块内 3rdparty/serial）。
+#        刻意不依赖 ROS 2、OpenCV 与 FFmpeg —— 它们属于导航/视觉侧工程。
 #
 #  构建：cmake -S . -B build && cmake --build build
 #  产物：build/info_relay、build/ipc_selftest；运行日志在 <repo>/logs，
@@ -90,44 +90,6 @@ add_library(relay_link OBJECT
     link/transport/serial_recorder.cpp
 )
 target_link_libraries(relay_link PUBLIC relay_common serial)
-
-# ---------------------------------------------------------------------------
-# ROS 2 桥接（可选）：导航速度订阅 + 云台关节/裁判状态发布
-# 找不到 ROS 2 时整段跳过，relay 仍可只做 iceoryx2 转发
-# ---------------------------------------------------------------------------
-find_package(ament_cmake QUIET)
-find_package(rclcpp QUIET)
-find_package(std_msgs QUIET)
-find_package(geometry_msgs QUIET)
-find_package(sensor_msgs QUIET)
-find_package(rosidl_typesupport_cpp QUIET)
-
-if(ament_cmake_FOUND AND rclcpp_FOUND AND std_msgs_FOUND AND geometry_msgs_FOUND AND sensor_msgs_FOUND AND rosidl_typesupport_cpp_FOUND)
-  message(STATUS "[info_relay] 找到 ROS2，启用导航与裁判桥接")
-  target_sources(relay_link PRIVATE
-      bridge/ros2/ros2.cpp
-      bridge/ros2/publish2nav.cpp
-      bridge/ros2/subscribe2nav.cpp
-  )
-  target_include_directories(relay_link SYSTEM PUBLIC
-      ${rclcpp_INCLUDE_DIRS}
-      ${std_msgs_INCLUDE_DIRS}
-      ${geometry_msgs_INCLUDE_DIRS}
-      ${sensor_msgs_INCLUDE_DIRS}
-      ${rosidl_typesupport_cpp_INCLUDE_DIRS}
-  )
-  target_link_libraries(relay_link PUBLIC
-      ${rclcpp_LIBRARIES}
-      ${std_msgs_LIBRARIES}
-      ${geometry_msgs_LIBRARIES}
-      ${sensor_msgs_LIBRARIES}
-      ${rosidl_typesupport_cpp_LIBRARIES}
-  )
-  # main.cpp 用该宏决定是否装配 ROS2 桥接
-  target_compile_definitions(relay_common PUBLIC INFO_RELAY_WITH_ROS2=1)
-else()
-  message(STATUS "[info_relay] 未找到 ROS2，导航与裁判桥接不参与构建")
-endif()
 
 # ---------------------------------------------------------------------------
 # relay 进程

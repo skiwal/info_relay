@@ -12,10 +12,11 @@
 #define INFO_RELAY__RELAY_HPP
 
 /*
- * relay 主循环：把串口解析结果按主题发布到 iceoryx2，把视觉下发的指令写回串口。
+ * relay 主循环：把串口解析结果按主题发布到 iceoryx2，把视觉/导航下发的指令写回串口。
  *
  * 数据流：SerialBoard（接收线程解析）→ 本循环按节拍取样 → iceoryx2 主题；
- *         视觉侧 AimCmd → 本循环取出 → info_relay::Command → SerialBoard::send → 串口。
+ *         视觉侧 AimCmd → 本循环取出 → info_relay::Command → SerialBoard::send → 串口；
+ *         导航侧 NavCmd → 本循环取出 → info_relay::NavCommand → SerialBoard::send → 串口。
  *
  * 线程：全程在调用线程内运行，不额外起线程；SerialBoard 自己的接收线程负责收字节。
  *

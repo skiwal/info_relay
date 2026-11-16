@@ -48,7 +48,7 @@ inline constexpr const char * kTopicChassis = "chassis";  // 底盘反馈，100H
 inline constexpr const char * kTopicRobot = "robot";      // 机器人状态，1Hz 及变化即发
 inline constexpr const char * kTopicGame = "game";        // 比赛状态，1Hz
 inline constexpr const char * kTopicHealth = "health";    // 链路健康，10Hz
-// 主题名后缀：视觉发布
+// 主题名后缀：视觉/导航发布
 inline constexpr const char * kTopicCmdAim = "cmd_aim";   // 云台瞄准指令
 inline constexpr const char * kTopicCmdNav = "cmd_nav";   // 导航速度指令
 

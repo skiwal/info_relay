@@ -12,7 +12,7 @@
  * relay 主循环实现：iceoryx2 主题装配 + 500Hz 转发节拍。
  *
  * 发布主题（relay → 任意进程）：imu 500Hz、chassis 100Hz、robot/game 1Hz、health 10Hz
- * 订阅主题（视觉 → relay）：cmd_aim（云台瞄准指令）
+ * 订阅主题（视觉/导航 → relay）：cmd_aim（云台瞄准指令）、cmd_nav（底盘速度指令）
  *
  * 节流策略：Imu 只在 SerialBoard 解出新帧时发布，避免重复样本污染视觉侧的插值；
  *           chassis / robot / game / health 按固定周期发布，内容取最新快照。
@@ -140,7 +140,7 @@ int run(const Options & opt, info_relay::SerialBoard & board, const std::functio
   auto hl_pub_exp = hl_service.publisher_builder().create();
   auto & hl_pub = unwrap_init(hl_pub_exp, "创建 health 发布者");
 
-  // —— 订阅侧：视觉下发的瞄准指令 ——
+  // —— 订阅侧：视觉下发的瞄准指令、导航下发的速度指令 ——
   auto aim_name =
     service_name(prefix, msg::kTopicCmdAim);
   auto aim_service_exp =
@@ -148,6 +148,14 @@ int run(const Options & opt, info_relay::SerialBoard & board, const std::functio
   auto & aim_service = unwrap_init(aim_service_exp, "创建 cmd_aim 服务");
   auto aim_sub_exp = aim_service.subscriber_builder().create();
   auto & aim_sub = unwrap_init(aim_sub_exp, "创建 cmd_aim 订阅者");
+
+  auto nav_name =
+    service_name(prefix, msg::kTopicCmdNav);
+  auto nav_service_exp =
+    node.service_builder(nav_name).publish_subscribe<msg::NavCmd>().open_or_create();
+  auto & nav_service = unwrap_init(nav_service_exp, "创建 cmd_nav 服务");
+  auto nav_sub_exp = nav_service.subscriber_builder().create();
+  auto & nav_sub = unwrap_init(nav_sub_exp, "创建 cmd_nav 订阅者");
 
   logger()->info("[relay] 主题前缀 {}，开始转发", prefix);
 
@@ -194,6 +202,24 @@ int run(const Options & opt, info_relay::SerialBoard & board, const std::functio
         const int64_t us = (now_ns - static_cast<int64_t>(aim.t_ns)) / 1000;
         last_latency_us = static_cast<uint16_t>(us > 65535 ? 65535 : us);
       }
+    }
+
+    msg::NavCmd nav{};
+    bool has_nav = false;
+    auto nav_taken = nav_sub.receive();
+    while (nav_taken.has_value() && nav_taken.value().has_value()) {
+      nav = nav_taken.value().value().payload();
+      has_nav = true;
+      nav_taken = nav_sub.receive();
+    }
+    if (has_nav) {
+      info_relay::NavCommand cmd{};
+      cmd.vx = nav.vx;
+      cmd.vy = nav.vy;
+      cmd.wz = nav.wz;
+      cmd.target_angle = 0.0;  // 线格式未携带目标航向角
+      board.send(cmd);
+      tx_commands++;
     }
 
     // ---- 上行：有新帧才发 Imu，避免重复样本 ----

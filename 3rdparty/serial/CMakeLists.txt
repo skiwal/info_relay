@@ -33,7 +33,7 @@ else()
 endif()
 
 ## Add serial library
-# 必须显式 STATIC：找到 ROS2 时，ament 会把 BUILD_SHARED_LIBS 置为 ON，
+# 必须显式 STATIC：外部构建环境可能把 BUILD_SHARED_LIBS 置为 ON，
 # 于是这里会被动变成 libserial.so，导致 install/bin 里的程序在干净机器上
 # 缺少 libserial.so 而无法启动。串口库很小，静态链接最省心。
 add_library(${PROJECT_NAME} STATIC ${serial_SRCS})
