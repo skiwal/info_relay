@@ -227,7 +227,6 @@ int run(const RelayConfig & cfg, const std::function<bool()> & should_exit)
     }
     if (has_aim) {
       info_relay::Command cmd{};
-      cmd.control = aim.control != 0;
       cmd.shoot = aim.shoot != 0;
       cmd.yaw = aim.yaw_rad;
       cmd.pitch = aim.pitch_rad;

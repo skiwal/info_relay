@@ -31,7 +31,6 @@ namespace info_relay
 // 视觉下发的云台瞄准指令（对应下行 0x0400）
 struct Command
 {
-  bool control = false;          // 是否接管云台；false 时下位机忽略 yaw/pitch
   bool shoot = false;            // 是否请求发弹
   double yaw = 0;                // 世界系绝对 yaw，rad；(0, 2π]
   double pitch = 0;              // 世界系绝对 pitch，rad，向上为负

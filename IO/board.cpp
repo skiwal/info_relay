@@ -149,7 +149,7 @@ void CommBoard::send(Command command) const
   uint8_t frame[sizeof(SendPacket)]{};
   const size_t size = encode_aim(
     frame, sizeof(frame), static_cast<float>(command.pitch), static_cast<float>(command.yaw),
-    (command.control && command.shoot) ? 1 : 0);
+    command.shoot ? 1 : 0);
   if (size == 0) {
     logger()->warn("[CommBoard] 自瞄控制帧 0x{:04X} 打包失败", kCmdAimDownlink);
     return;
